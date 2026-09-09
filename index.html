@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MakeCode micro:bit MIDI to Python Converter</title>
+  <!-- MIDI解析用ライブラリ (Tone.js Midi) -->
+  <script src="https://unpkg.com/@tonejs/midi"></script>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 800px;
+      margin: 20px auto;
+      padding: 0 20px;
+      background-color: #f8f9fa;
+      color: #333;
+    }
+    h1 { color: #007acc; font-size: 1.5rem; }
+    .drop-zone {
+      border: 2px dashed #007acc;
+      border-radius: 8px;
+      padding: 30px;
+      text-align: center;
+      background: #fff;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .drop-zone:hover { background: #eef6fc; }
+    .controls {
+      margin: 20px 0;
+      display: flex;
+      gap: 15px;
+      align-items: center;
+    }
+    textarea {
+      width: 100%;
+      height: 300px;
+      font-family: monospace;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+      background-color: #1e1e1e;
+      color: #d4d4d4;
+    }
+    button {
+      background: #007acc;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    button:hover { background: #005999; }
+  </style>
+</head>
+<body>
+
+  <h1>micro:bit MakeCode Python MIDI Converter</h1>
+  <p>MIDIファイル（.mid）を選択すると、MakeCode micro:bit (Python) で使えるコードに変換するよ！</p>
+
+  <div class="drop-zone" id="dropZone">
+    MIDIファイルをここにドラッグ＆ドロップ <br>または クリックしてファイルを選択
+    <input type="file" id="fileInput" accept=".mid,.midi" style="display: none;">
+  </div>
+
+  <div class="controls">
+    <label>
+      再生速度 (テンポ倍率): 
+      <input type="number" id="speed" value="1.0" step="0.1" min="0.1" max="3.0" style="width: 60px;">
+    </label>
+    <button id="copyBtn" style="display:none;">コードをコピー</button>
+  </div>
+
+  <h3>出力コード (MakeCode Python)</h3>
+  <textarea id="output" readonly placeholder="変換結果がここに表示されます..."></textarea>
+
+  <script>
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const output = document.getElementById('output');
+    const speedInput = document.getElementById('speed');
+    const copyBtn = document.getElementById('copyBtn');
+
+    let currentMidiData = null;
+
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.style.background = '#eef6fc';
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.style.background = '#fff';
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.style.background = '#fff';
+      if (e.dataTransfer.files.length > 0) {
+        processFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        processFile(e.target.files[0]);
+      }
+    });
+
+    speedInput.addEventListener('input', () => {
+      if (currentMidiData) convertToMakeCodePython(currentMidiData);
+    });
+
+    function processFile(file) {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        currentMidiData = new Midi(e.target.result);
+        convertToMakeCodePython(currentMidiData);
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    // MIDIノート番号から周波数(Hz)への変換 formula
+    function midiToFreq(note) {
+      return Math.round(440 * Math.pow(2, (note - 69) / 12));
+    }
+
+    function convertToMakeCodePython(midi) {
+      const speed = parseFloat(speedInput.value) || 1.0;
+      
+      // すべてのトラックからノート（音符）情報を収集
+      let allNotes = [];
+      midi.tracks.forEach(track => {
+        track.notes.forEach(note => {
+          allNotes.push({
+            midi: note.midi,
+            time: note.time / speed,
+            duration: note.duration / speed
+          });
+        });
+      });
+
+      if (allNotes.length === 0) {
+        output.value = "# MIDIデータから音符が検出できませんでした。";
+        copyBtn.style.display = "none";
+        return;
+      }
+
+      // 時間順にソート
+      allNotes.sort((a, b) => a.time - b.time);
+
+      let freqs = [];
+      let durations = [];
+      let currentTime = 0;
+
+      allNotes.forEach(note => {
+        // 直前の音との間に隙間（休符）があれば追加
+        const gap = note.time - currentTime;
+        if (gap > 0.05) { // 50ms以上のスキップなら休符とする
+          freqs.push(0); // 0Hz = 休符
+          durations.push(Math.round(gap * 1000));
+        }
+
+        // 音符を追加（ミリ秒単位に変換）
+        freqs.push(midiToFreq(note.midi));
+        durations.push(Math.round(note.duration * 1000));
+
+        currentTime = note.time + note.duration;
+      });
+
+      // MakeCode Pythonコードの組み立て
+      const pythonCode = `# MakeCode micro:bit Python用音階演奏プログラム
+# 変換元: ${midi.name || 'MIDI File'}
+
+notes = [${freqs.join(', ')}]
+durations = [${durations.join(', ')}]
+
+for i in range(len(notes)):
+    freq = notes[i]
+    duration = durations[i]
+    if freq > 0:
+        music.play_tone(freq, duration)
+    else:
+        basic.pause(duration)
+`;
+
+      output.value = pythonCode;
+      copyBtn.style.display = "inline-block";
+    }
+
+    // コピーボタン処理
+    copyBtn.addEventListener('click', () => {
+      output.select();
+      navigator.clipboard.writeText(output.value);
+      alert('MakeCode用Pythonコードをクリップボードにコピーしたよ！');
+    });
+  </script>
+</body>
+</html>
