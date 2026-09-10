@@ -75,8 +75,8 @@
   <canvas id="visualizer" width="800" height="400"></canvas>
   
   <div class="controls">
-    <button id="startButton">画面・Spotify音声を共有して開始</button>
-    <p class="hint">※ 共有選択時、「Chromeタブ」でSpotifyのタブを選び「タブの音声を共有」をONにしてね！</p>
+    <button id="startButton">画面・音楽を流す音声を共有して開始</button>
+    <p class="hint">※ 共有選択時、「Chromeタブ」で音楽を流すタブを選び「タブの音声を共有」をONにしてね！</p>
   </div>
 
   <script>
@@ -123,12 +123,12 @@
 
         isPlaying = true;
         startButton.disabled = true;
-        startButton.innerText = '解析中... (TECHNOPOLIS再生中)';
+        startButton.innerText = '解析中... (再生中…)';
 
         audioTrack.onended = () => {
           isPlaying = false;
           startButton.disabled = false;
-          startButton.innerText = '画面・Spotify音声を共有して開始';
+          startButton.innerText = '画面・音楽を流す音声を共有して開始';
           ctx.clearRect(0, 0, canvas.width, canvas.height);
         };
 
